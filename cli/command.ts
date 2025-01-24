@@ -124,7 +124,7 @@ function programCommand(name: string) {
       'Solana cluster env name',
       'devnet'
     )
-    .option('-r, --rpc <string>', 'Solana cluster RPC name', 'https://devnet.helius-rpc.com/?api-key=236e0b21-f95c-4886-8402-9e47e76beded')
+    .option('-r, --rpc <string>', 'Solana cluster RPC name', 'https://api.devnet.solana.com')
     .option('-k, --keypair <string>', 'Solana wallet Keypair Path', '../key/uu.json');
 }
 
