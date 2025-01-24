@@ -5,9 +5,6 @@ anchor_version = "0.30.1"
 resolution = true
 skip-lint = true
 
-[programs.devnet]
-pumpfun = "Cu3ZCXsVh7xC64gWH23vjDeytWC6ZGcMRVYZAka92QTq"
-
 [programs.localnet]
 pumpfun = "Cu3ZCXsVh7xC64gWH23vjDeytWC6ZGcMRVYZAka92QTq"
 
