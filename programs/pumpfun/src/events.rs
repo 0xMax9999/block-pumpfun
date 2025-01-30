@@ -44,3 +44,11 @@ pub struct WithdrawEvent {
     pub token_amount: u64
 }
 
+#[event]
+pub struct MigrateEvent {
+    pub admin: Pubkey,
+    pub token: Pubkey,
+    pub bonding_curve: Pubkey,
+    pub token_in: u64,
+    pub sol_in: u64,
+}

@@ -2,10 +2,7 @@ use anchor_lang::{prelude::*, solana_program::program::invoke_signed};
 use anchor_spl::token::{burn, Burn, TokenAccount};
 
 use crate::{
-    amm_instruction,
-    constants::{BONDING_CURVE, CONFIG, GLOBAL},
-    errors::PumpfunError,
-    state::{BondingCurve, BondingCurveAccount, Config},
+    amm_instruction, constants::{BONDING_CURVE, CONFIG, GLOBAL}, errors::PumpfunError, events::MigrateEvent, state::{BondingCurve, BondingCurveAccount, Config}
 };
 
 #[derive(Accounts)]
@@ -287,6 +284,15 @@ impl<'info> Migrate<'info> {
 
         //  update reserves
         bonding_curve.update_reserves(&*self.global_config, 0, 0)?;
+
+        //  emit an event
+        emit!(MigrateEvent {
+            admin: self.payer.key(),
+            token: self.coin_mint.key(),
+            bonding_curve: self.bonding_curve.key(),
+            token_in: coin_amount,
+            sol_in: init_pc_amount
+        });
 
         Ok(())
     }
