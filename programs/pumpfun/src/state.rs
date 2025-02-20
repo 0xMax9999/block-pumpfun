@@ -108,14 +108,6 @@ pub trait BondingCurveAccount<'info> {
         system_program: &Program<'info, System>,
     ) -> Result<u64>;
 
-    fn simulate_swap(
-        &self,
-        global_config: &Account<'info, Config>,
-        token_mint: &Account<'info, Mint>,
-        amount: u64,
-        direction: u8,
-    ) -> Result<u64>;
-
     fn cal_amount_out(
         &self,
         amount: u64,
@@ -266,28 +258,6 @@ impl<'info> BondingCurveAccount<'info> for Account<'info, BondingCurve> {
             msg!("fee: {:?} amount_out: {:?}", fee, amount_out);
         }
         Ok(amount_out)
-    }
-
-    fn simulate_swap(
-        &self,
-        global_config: &Account<'info, Config>,
-        token_mint: &Account<'info, Mint>,
-        amount: u64,
-        direction: u8,
-    ) -> Result<u64> {
-        if amount <= 0 {
-            return err!(PumpfunError::InvalidAmount);
-        }
-
-        Ok(self
-            .cal_amount_out(
-                amount,
-                token_mint.decimals,
-                direction,
-                global_config.platform_sell_fee,
-                global_config.platform_buy_fee,
-            )?
-            .1)
     }
 
     fn cal_amount_out(

@@ -60,12 +60,6 @@ pub mod pumpfun {
         )
     }
 
-    //  amount - swap amount
-    //  direction - 0: buy, 1: sell
-    pub fn simulate_swap(ctx: Context<SimulateSwap>, amount: u64, direction: u8) -> Result<u64> {
-        ctx.accounts.process(amount, direction)
-    }
-
     //  admin can withdraw sol/token after the curve is completed
     //  backend receives a event when the curve is completed and call this instruction
     pub fn withdraw(ctx: Context<Withdraw>) -> Result<()> {
