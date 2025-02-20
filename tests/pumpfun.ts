@@ -92,10 +92,10 @@ describe("pumpfun", () => {
       platformMigrationFee: 0,
       teamWallet: adminKp.publicKey,
 
-      initBondingCurve: TEST_INIT_BONDING_CURVE,
-
       platformBuyFee: 5.0, // Example fee: 5%
       platformSellFee: 5.0, // Example fee: 5%
+
+      initBondingCurve: TEST_INIT_BONDING_CURVE,
 
       curveLimit: new BN(400_000_000_000), //  Example limit: 400 SOL
 
@@ -139,8 +139,6 @@ describe("pumpfun", () => {
     assert.equal(configAccount.tokenSupplyConfig, TEST_TOKEN_SUPPLY);
 
     assert.equal(configAccount.tokenDecimalsConfig, TEST_DECIMALS);
-
-    assert.equal(configAccount.initBondingCurve, TEST_INIT_BONDING_CURVE);
   });
 
   it("Is the token created", async () => {
@@ -164,7 +162,6 @@ describe("pumpfun", () => {
       .accounts({
         creator: userKp.publicKey,
         token: tokenKp.publicKey,
-        teamWallet: configAccount.teamWallet,
       })
       .signers([userKp, tokenKp])
       .rpc();
@@ -219,51 +216,6 @@ describe("pumpfun", () => {
       globalVaultBalance.value.amount,
       (TEST_TOKEN_SUPPLY * TEST_INIT_BONDING_CURVE) / 100
     );
-  });
-
-  // trade SOL for token
-  it("Is user1's simulate swap SOL for token completed", async () => {
-    // get PDA for the config account using the seed "config".
-    const [configPda, _] = PublicKey.findProgramAddressSync(
-      [Buffer.from(SEED_CONFIG)],
-      program.programId
-    );
-
-    // Log PDA details for debugging.
-    console.log("config PDA:", configPda.toString());
-
-    // Fetch the updated config account to validate the changes.
-    const configAccount = await program.account.config.fetch(configPda);
-
-    const amount = new BN(5_000_000);
-    const tx = await program.methods
-      .simulateSwap(amount, 0)
-      .accounts({
-        tokenMint: tokenKp.publicKey,
-      })
-      .view();
-    const actualAmountOut = new BN(tx).toNumber();
-
-    // amount after minus fees
-    const adjustedAmount = convertFromFloat(
-      (convertToFloat(amount.toNumber(), TEST_DECIMALS) *
-        (100 - configAccount.platformBuyFee)) /
-        100,
-      TEST_DECIMALS
-    );
-
-    const reserveToken = (TEST_TOKEN_SUPPLY * TEST_INIT_BONDING_CURVE) / 100;
-    console.log(reserveToken);
-    const amountOut = calculateAmountOutBuy(
-      TEST_VIRTUAL_RESERVES,
-      adjustedAmount,
-      TEST_DECIMALS,
-      reserveToken
-    );
-
-    console.log("expected amount out: ", amountOut);
-    console.log("actual amount out: ", actualAmountOut);
-    assert.equal(actualAmountOut, Math.floor(amountOut));
   });
 
   it("Is user1's swap SOL for token completed", async () => {

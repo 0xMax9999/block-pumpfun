@@ -76,7 +76,6 @@ export const launchTokenTx = async (
     .accounts({
       creator: user,
       token: tokenKp.publicKey,
-      teamWallet: user,
     })
     .transaction();
 
