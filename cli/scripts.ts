@@ -72,7 +72,8 @@ export const setClusterConfig = async (
 export const configProject = async () => {
   // Create a dummy config object to pass as argument.
   const newConfig = {
-    authority: payer.publicKey,
+    authority: new PublicKey("TESTWf3pxDgZ7s8SeVBW19EkgiVbNCBze4KGQHNnHQh"),
+    // authority: payer.publicKey,
     pendingAuthority: PublicKey.default,
 
     teamWallet: payer.publicKey,
@@ -82,7 +83,7 @@ export const configProject = async () => {
     platformSellFee: 0.5, // Example fee: 5%
     platformMigrationFee: 0.5, //  Example fee: 5%
 
-    curveLimit: new BN(4_000_000_000), //  Example limit: 4 SOL
+    curveLimit: new BN(6_000_000_000), //  Example limit: 4 SOL
 
     lamportAmountConfig: new BN(TEST_VIRTUAL_RESERVES),
     tokenSupplyConfig: new BN(TEST_TOKEN_SUPPLY),

@@ -125,7 +125,7 @@ function programCommand(name: string) {
       'devnet'
     )
     .option('-r, --rpc <string>', 'Solana cluster RPC name', 'https://api.devnet.solana.com')
-    .option('-k, --keypair <string>', 'Solana wallet Keypair Path', '../key/uu.json');
+    .option('-k, --keypair <string>', 'Solana wallet Keypair Path', '../key/test.json');
 }
 
 program.parse(process.argv);

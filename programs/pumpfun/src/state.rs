@@ -97,7 +97,6 @@ pub trait BondingCurveAccount<'info> {
         user_ata: &mut AccountInfo<'info>,
         source: &mut AccountInfo<'info>,
         team_wallet: &mut AccountInfo<'info>,
-        team_wallet_ata: &mut AccountInfo<'info>,
         amount: u64,
         direction: u8,
         minimum_receive_amount: u64,
@@ -156,7 +155,6 @@ impl<'info> BondingCurveAccount<'info> for Account<'info, BondingCurve> {
 
         source: &mut AccountInfo<'info>,
         team_wallet: &mut AccountInfo<'info>,
-        team_wallet_ata: &mut AccountInfo<'info>,
 
         amount: u64,
         direction: u8,
@@ -172,25 +170,10 @@ impl<'info> BondingCurveAccount<'info> for Account<'info, BondingCurve> {
             return err!(PumpfunError::InvalidAmount);
         }
 
-        // if side = buy, amount to swap = min(amount, remaining reserve)
-        let amount = if direction == 1 {
-            amount
-        } else {
-            amount.min(global_config.curve_limit - self.reserve_lamport)
-        };
-
         msg!("Mint: {:?} ", token_mint.key());
         msg!("Swap: {:?} {:?} {:?}", user.key(), direction, amount);
 
-        // xy = k => Constant product formula
-        // (x + dx)(y - dy) = k
-        // y - dy = k / (x + dx)
-        // y - dy = xy / (x + dx)
-        // dy = y - (xy / (x + dx))
-        // dy = yx + ydx - xy / (x + dx)
-        // formula => dy = ydx / (x + dx)
-
-        let (adjusted_amount, amount_out) = self.cal_amount_out(
+        let (fee, amount_out) = self.cal_amount_out(
             amount,
             token_mint.decimals,
             direction,
@@ -198,31 +181,32 @@ impl<'info> BondingCurveAccount<'info> for Account<'info, BondingCurve> {
             global_config.platform_buy_fee,
         )?;
 
-        if amount_out < minimum_receive_amount {
-            return Err(PumpfunError::ReturnAmountTooSmall.into());
-        }
+        require!(amount_out >= minimum_receive_amount, PumpfunError::ReturnAmountTooSmall);
 
+        // 1 is selling token
         if direction == 1 {
             let new_reserves_one = self
                 .reserve_token
-                .checked_add(amount)
+                .checked_add(amount_out)
                 .ok_or(PumpfunError::OverflowOrUnderflowOccurred)?;
 
             let new_reserves_two = self
                 .reserve_lamport
-                .checked_sub(amount_out)
+                .checked_sub(amount_out + fee)
                 .ok_or(PumpfunError::OverflowOrUnderflowOccurred)?;
 
-            self.update_reserves(global_config, new_reserves_one, new_reserves_two)?;
-
-            msg! {"Reserves: {:?} {:?}", new_reserves_one, new_reserves_two};
+            self.update_reserves(
+                global_config,
+                new_reserves_one,
+                new_reserves_two
+            )?;
 
             token_transfer_user(
                 user_ata.clone(),
                 &user,
                 global_ata.clone(),
                 &token_program,
-                adjusted_amount,
+                amount,
             )?;
 
             sol_transfer_with_signer(
@@ -233,19 +217,17 @@ impl<'info> BondingCurveAccount<'info> for Account<'info, BondingCurve> {
                 amount_out,
             )?;
 
-            //  transfer fee to team wallet
-            let fee_amount = amount - adjusted_amount;
-
-            msg! {"fee: {:?}", fee_amount}
-
-            token_transfer_user(
-                user_ata.clone(),
-                &user,
-                team_wallet_ata.clone(),
-                &token_program,
-                fee_amount,
+            sol_transfer_with_signer(
+                source.clone(),
+                team_wallet.to_account_info(),
+                &system_program,
+                signer,
+                fee,
             )?;
+            
+            msg!("fee: {:?} amount_out: {:?}", fee, amount_out);
         } else {
+            // buying token with SOL
             let new_reserves_one = self
                 .reserve_token
                 .checked_sub(amount_out)
@@ -253,11 +235,14 @@ impl<'info> BondingCurveAccount<'info> for Account<'info, BondingCurve> {
 
             let new_reserves_two = self
                 .reserve_lamport
-                .checked_add(amount)
+                .checked_add(amount - fee)
                 .ok_or(PumpfunError::OverflowOrUnderflowOccurred)?;
 
-            let is_completed =
-                self.update_reserves(global_config, new_reserves_one, new_reserves_two)?;
+            let is_completed = self.update_reserves(
+                global_config,
+                new_reserves_one,
+                new_reserves_two
+            )?;
 
             if is_completed == true {
                 emit!(CompleteEvent {
@@ -266,8 +251,6 @@ impl<'info> BondingCurveAccount<'info> for Account<'info, BondingCurve> {
                     bonding_curve: self.key()
                 });
             }
-
-            msg! {"Reserves: {:?} {:?}", new_reserves_one, new_reserves_two};
 
             token_transfer_with_signer(
                 global_ata.clone(),
@@ -278,13 +261,9 @@ impl<'info> BondingCurveAccount<'info> for Account<'info, BondingCurve> {
                 amount_out,
             )?;
 
-            sol_transfer_from_user(&user, source.clone(), &system_program, amount)?;
-
-            //  transfer fee to team wallet
-            let fee_amount = amount - adjusted_amount;
-            msg! {"fee: {:?}", fee_amount}
-
-            sol_transfer_from_user(&user, team_wallet.clone(), &system_program, fee_amount)?;
+            sol_transfer_from_user(&user, source.clone(), &system_program, amount - fee)?;
+            sol_transfer_from_user(&user, team_wallet.clone(), &system_program, fee)?;
+            msg!("fee: {:?} amount_out: {:?}", fee, amount_out);
         }
         Ok(amount_out)
     }
@@ -320,11 +299,6 @@ impl<'info> BondingCurveAccount<'info> for Account<'info, BondingCurve> {
         platform_buy_fee: f64,
     ) -> Result<(u64, u64)> {
         // xy = k => Constant product formula
-        // (x + dx)(y - dy) = k
-        // y - dy = k / (x + dx)
-        // y - dy = xy / (x + dx)
-        // dy = y - (xy / (x + dx))
-        // dy = (yx + ydx - xy) / (x + dx)
         // formula => dy = ydx / (x + dx)
 
         let fee_percent = if direction == 1 {
@@ -333,35 +307,43 @@ impl<'info> BondingCurveAccount<'info> for Account<'info, BondingCurve> {
             platform_buy_fee
         };
 
-        let adjusted_amount_in_float = convert_to_float(amount, token_one_decimals)
-            .div(100_f64)
-            .mul(100_f64.sub(fee_percent));
-
-        let adjusted_amount = convert_from_float(adjusted_amount_in_float, token_one_decimals);
-
         let amount_out: u64;
+        let fee: u64;
 
         // sell
         if direction == 1 {
-            // sell, token for sel
+            // sell, token for sol
             // x + dx token
             let denominator_sum = self
                 .reserve_token
-                .checked_add(adjusted_amount)
+                .checked_add(amount)
                 .ok_or(PumpfunError::OverflowOrUnderflowOccurred)?;
 
             // (x + dx) / dx
             let div_amt = convert_to_float(denominator_sum, token_one_decimals)
-                .div(convert_to_float(adjusted_amount, token_one_decimals));
+                .div(convert_to_float(amount, token_one_decimals));
 
             // dy = y / ((x + dx) / dx)
             // dx = ydx / (x + dx)
-            let amount_out_in_float =
+            let amount_out_total_in_float =
                 convert_to_float(self.reserve_lamport, LAMPORT_DECIMALS).div(div_amt);
+            let amount_out_total = convert_from_float(amount_out_total_in_float, LAMPORT_DECIMALS);
 
-            amount_out = convert_from_float(amount_out_in_float, LAMPORT_DECIMALS);
+            let adjusted_amount_out_float = amount_out_total_in_float
+                .div(100_f64)
+                .mul(100_f64.sub(fee_percent));
+            amount_out = convert_from_float(adjusted_amount_out_float, LAMPORT_DECIMALS);
+            fee = amount_out_total - amount_out;
         } else {
             // buy, sol for token
+            // dy sol
+            let adjusted_amount_in_float = convert_to_float(amount, token_one_decimals)
+                .div(100_f64)
+                .mul(100_f64.sub(fee_percent));
+            let adjusted_amount = convert_from_float(adjusted_amount_in_float, token_one_decimals);
+
+            fee = amount - adjusted_amount;
+
             // y + dy sol
             let denominator_sum = self
                 .reserve_lamport
@@ -376,9 +358,8 @@ impl<'info> BondingCurveAccount<'info> for Account<'info, BondingCurve> {
             // dx = xdy / (y + dy)
             let amount_out_in_float =
                 convert_to_float(self.reserve_token, token_one_decimals).div(div_amt);
-
             amount_out = convert_from_float(amount_out_in_float, token_one_decimals);
         }
-        Ok((adjusted_amount, amount_out))
+        Ok((fee, amount_out))
     }
 }

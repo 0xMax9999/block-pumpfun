@@ -1,5 +1,3 @@
-use std::ops::{Div, Mul};
-
 use crate::{
     constants::{BONDING_CURVE, CONFIG, GLOBAL, METADATA},
     errors::*,
@@ -90,27 +88,6 @@ pub struct Launch<'info> {
 
     #[account(address = metadata::ID)]
     mpl_token_metadata_program: Program<'info, Metadata>,
-
-    //  team wallet
-    /// CHECK: should be same with the address in the global_config
-    #[account(
-        mut,
-        constraint = global_config.team_wallet == team_wallet.key() @PumpfunError::IncorrectAuthority
-    )]
-    pub team_wallet: AccountInfo<'info>,
-
-    /// CHECK: ata of team wallet
-    #[account(
-        mut,
-        seeds = [
-            team_wallet.key().as_ref(),
-            anchor_spl::token::spl_token::ID.as_ref(),
-            token.key().as_ref(),
-        ],
-        bump,
-        seeds::program = anchor_spl::associated_token::ID
-    )]
-    team_wallet_ata: AccountInfo<'info>,
 }
 
 impl<'info> Launch<'info> {
@@ -128,8 +105,6 @@ impl<'info> Launch<'info> {
         let global_token_account = &self.global_token_account;
         let bonding_curve = &mut self.bonding_curve;
         let global_vault = &self.global_vault;
-        let team_wallet = &mut self.team_wallet;
-        let team_wallet_ata = &self.team_wallet_ata;
 
         // launch config
         let decimals = global_config.token_decimals_config;
@@ -143,18 +118,12 @@ impl<'info> Launch<'info> {
             return Err(ValueInvalid.into());
         }
 
-        let init_bonding_curve = (token_supply as f64)
-            .mul(global_config.init_bonding_curve)
-            .div(100_f64) as u64;
-
-        let amount_to_team = token_supply - init_bonding_curve;
-
         // create token launch pda
         bonding_curve.token_mint = token.key();
         bonding_curve.creator = creator.key();
         bonding_curve.init_lamport = reserve_lamport;
         bonding_curve.reserve_lamport = reserve_lamport;
-        bonding_curve.reserve_token = init_bonding_curve;
+        bonding_curve.reserve_token = token_supply;
 
         // create global token account
         associated_token::create(CpiContext::new(
@@ -168,19 +137,7 @@ impl<'info> Launch<'info> {
                 system_program: self.system_program.to_account_info(),
             },
         ))?;
-        // create team token account
-        anchor_spl::associated_token::create(CpiContext::new(
-            self.associated_token_program.to_account_info(),
-            anchor_spl::associated_token::Create {
-                payer: creator.to_account_info(),
-                associated_token: team_wallet_ata.to_account_info(),
-                authority: team_wallet.to_account_info(),
 
-                mint: token.to_account_info(),
-                system_program: self.system_program.to_account_info(),
-                token_program: self.token_program.to_account_info(),
-            },
-        ))?;
         let signer_seeds: &[&[&[u8]]] = &[&[GLOBAL.as_bytes(), &[global_vault_bump]]];
 
         // mint tokens to bonding curve & team
@@ -194,19 +151,7 @@ impl<'info> Launch<'info> {
                 },
                 signer_seeds,
             ),
-            init_bonding_curve,
-        )?;
-        token::mint_to(
-            CpiContext::new_with_signer(
-                self.token_program.to_account_info(),
-                token::MintTo {
-                    mint: token.to_account_info(),
-                    to: team_wallet_ata.to_account_info(),
-                    authority: global_vault.to_account_info(),
-                },
-                signer_seeds,
-            ),
-            amount_to_team,
+            token_supply,
         )?;
 
         // create metadata
@@ -263,7 +208,7 @@ impl<'info> Launch<'info> {
             decimals,
             token_supply,
             reserve_lamport,
-            reserve_token: init_bonding_curve
+            reserve_token: token_supply
         });
 
         Ok(())
