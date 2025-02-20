@@ -18,8 +18,6 @@ pub struct Config {
 
     pub team_wallet: Pubkey,
 
-    pub init_bonding_curve: f64, // bonding curve init percentage. The remaining amount is sent to team wallet for distribution to agent
-
     pub platform_buy_fee: f64, //  platform fee percentage
     pub platform_sell_fee: f64,
     pub platform_migration_fee: f64,
